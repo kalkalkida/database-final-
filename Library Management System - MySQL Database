@@ -1,0 +1,160 @@
+-- Library Management System Database
+-- Author: [Kalkidan Tilahun]
+-- Date: [29/08/2017]
+
+-- Create database
+CREATE DATABASE IF NOT EXISTS LibraryManagementSystem;
+USE LibraryManagementSystem;
+
+-- Members table (1:1 with LibraryCards)
+CREATE TABLE Members (
+    member_id INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    phone VARCHAR(20),
+    address VARCHAR(200),
+    date_of_birth DATE,
+    registration_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+    CONSTRAINT chk_email CHECK (email LIKE '%@%.%')
+);
+
+-- LibraryCards table (1:1 with Members)
+CREATE TABLE LibraryCards (
+    card_id INT AUTO_INCREMENT PRIMARY KEY,
+    member_id INT UNIQUE NOT NULL,
+    issue_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+    expiry_date DATE NOT NULL DEFAULT (DATE_ADD(CURRENT_DATE, INTERVAL 3 YEAR)),
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (member_id) REFERENCES Members(member_id) ON DELETE CASCADE
+);
+
+-- Authors table
+CREATE TABLE Authors (
+    author_id INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    birth_year YEAR,
+    death_year YEAR,
+    nationality VARCHAR(50),
+    biography TEXT
+);
+
+-- Publishers table
+CREATE TABLE Publishers (
+    publisher_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    address VARCHAR(200),
+    contact_email VARCHAR(100),
+    contact_phone VARCHAR(20),
+    website VARCHAR(100),
+    CONSTRAINT chk_pub_email CHECK (contact_email LIKE '%@%.%')
+);
+
+-- Books table
+CREATE TABLE Books (
+    book_id INT AUTO_INCREMENT PRIMARY KEY,
+    isbn VARCHAR(20) UNIQUE NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    publisher_id INT,
+    publication_year YEAR,
+    edition INT,
+    category VARCHAR(50),
+    language VARCHAR(30),
+    page_count INT,
+    description TEXT,
+    FOREIGN KEY (publisher_id) REFERENCES Publishers(publisher_id) ON DELETE SET NULL
+);
+
+-- BookAuthors junction table (M:M relationship between Books and Authors)
+CREATE TABLE BookAuthors (
+    book_id INT NOT NULL,
+    author_id INT NOT NULL,
+    contribution_type VARCHAR(50),
+    PRIMARY KEY (book_id, author_id),
+    FOREIGN KEY (book_id) REFERENCES Books(book_id) ON DELETE CASCADE,
+    FOREIGN KEY (author_id) REFERENCES Authors(author_id) ON DELETE CASCADE
+);
+
+-- BookCopies table (1:M with Books)
+CREATE TABLE BookCopies (
+    copy_id INT AUTO_INCREMENT PRIMARY KEY,
+    book_id INT NOT NULL,
+    acquisition_date DATE DEFAULT (CURRENT_DATE),
+    status ENUM('Available', 'Checked Out', 'Lost', 'Damaged', 'In Repair') DEFAULT 'Available',
+    shelf_location VARCHAR(20),
+    FOREIGN KEY (book_id) REFERENCES Books(book_id) ON DELETE CASCADE
+);
+
+-- Loans table (1:M with Members and BookCopies)
+CREATE TABLE Loans (
+    loan_id INT AUTO_INCREMENT PRIMARY KEY,
+    copy_id INT NOT NULL,
+    member_id INT NOT NULL,
+    checkout_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_date DATE NOT NULL DEFAULT (DATE_ADD(CURRENT_DATE, INTERVAL 21 DAY)),
+    return_date DATETIME,
+    status ENUM('Active', 'Returned', 'Overdue', 'Lost') DEFAULT 'Active',
+    FOREIGN KEY (copy_id) REFERENCES BookCopies(copy_id),
+    FOREIGN KEY (member_id) REFERENCES Members(member_id),
+    CONSTRAINT chk_due_date CHECK (due_date > checkout_date)
+);
+
+-- Fines table (1:1 with Loans)
+CREATE TABLE Fines (
+    fine_id INT AUTO_INCREMENT PRIMARY KEY,
+    loan_id INT UNIQUE NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    issue_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+    payment_date DATE,
+    status ENUM('Pending', 'Paid', 'Waived') DEFAULT 'Pending',
+    FOREIGN KEY (loan_id) REFERENCES Loans(loan_id) ON DELETE CASCADE,
+    CONSTRAINT chk_amount CHECK (amount >= 0)
+);
+
+-- Reservations table (M:M between Members and Books)
+CREATE TABLE Reservations (
+    reservation_id INT AUTO_INCREMENT PRIMARY KEY,
+    book_id INT NOT NULL,
+    member_id INT NOT NULL,
+    reservation_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expiry_date DATETIME NOT NULL DEFAULT (DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY)),
+    status ENUM('Pending', 'Fulfilled', 'Cancelled', 'Expired') DEFAULT 'Pending',
+    FOREIGN KEY (book_id) REFERENCES Books(book_id) ON DELETE CASCADE,
+    FOREIGN KEY (member_id) REFERENCES Members(member_id) ON DELETE CASCADE
+);
+
+-- Staff table
+CREATE TABLE Staff (
+    staff_id INT AUTO_INCREMENT PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    phone VARCHAR(20),
+    position VARCHAR(50) NOT NULL,
+    hire_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+    salary DECIMAL(10,2),
+    CONSTRAINT chk_staff_email CHECK (email LIKE '%@%.%'),
+    CONSTRAINT chk_salary CHECK (salary >= 0)
+);
+
+-- AuditLog table for tracking changes
+CREATE TABLE AuditLog (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    table_name VARCHAR(50) NOT NULL,
+    record_id INT NOT NULL,
+    action ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+    changed_by INT,
+    change_timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    old_values JSON,
+    new_values JSON,
+    FOREIGN KEY (changed_by) REFERENCES Staff(staff_id)
+);
+
+-- Create indexes for performance
+CREATE INDEX idx_books_title ON Books(title);
+CREATE INDEX idx_books_isbn ON Books(isbn);
+CREATE INDEX idx_authors_name ON Authors(last_name, first_name);
+CREATE INDEX idx_loans_member ON Loans(member_id);
+CREATE INDEX idx_loans_status ON Loans(status);
+CREATE INDEX idx_reservations_book ON Reservations(book_id);
